@@ -43,8 +43,8 @@ use anyhow::{bail, Result};
 
 use crate::sql_data_types::{SerialData, SerialDataError, SerialType, VarInt, VarIntError};
 
-use std::convert::TryInto;
 use log::debug;
+use std::convert::TryInto;
 
 #[derive(Debug, Clone)]
 pub struct Record {

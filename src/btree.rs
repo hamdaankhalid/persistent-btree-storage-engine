@@ -93,31 +93,26 @@ use log::debug;
 *
 */
 
-
-// TODO: We Dont need TableBtree vs IndexBtree distinction here because the only difference is what we do at the cell and record interpretation level
+/*
+ TODO: We Dont need TableBtree vs IndexBtree distinction here because the only difference is what we do at the cell and record interpretation level
+*/
 
 #[derive(Debug, Clone)]
-pub struct TableBtree {
+pub struct Btree {
     db_file_name: String,
     db_file_handle: Rc<RefCell<File>>,
     page_size: usize,
     root_page: BtreePage,
 }
 
-impl TableBtree {
+impl Btree {
     // schema table is special because it has an extra 100 bytes of database header
     pub fn read_schema_table(
         db_file_name: &str,
         page_size: usize,
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
-        TableBtree::read_page_to_table_tree(
-            db_file_name,
-            page_size,
-            0,
-            100,
-            reserved_bytes_per_page,
-        )
+        Btree::read_page_to_table_tree(db_file_name, page_size, 0, 100, reserved_bytes_per_page)
     }
 
     pub fn read_table(
@@ -127,7 +122,7 @@ impl TableBtree {
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
         debug!("Reading Table Btree Page at Offset {}", page_offset);
-        TableBtree::read_page_to_table_tree(
+        Btree::read_page_to_table_tree(
             db_file_name,
             page_size,
             page_offset,
@@ -159,7 +154,7 @@ impl TableBtree {
 
         let root_page = BtreePage::new(buffer, header_offset, reserved_bytes_per_page)?;
 
-        Ok(TableBtree {
+        Ok(Btree {
             db_file_name: db_file_name.to_string(),
             db_file_handle: Rc::new(RefCell::new(db_file_handle)),
             page_size,
@@ -197,7 +192,7 @@ impl TableBtree {
 
                 for i in 0..num_cells {
                     let cell_offset = u16::from_be_bytes(
-                        cell_pointers[(i*2) as usize..(i*2 + 2) as usize].try_into()?,
+                        cell_pointers[(i * 2) as usize..(i * 2 + 2) as usize].try_into()?,
                     );
                     let tent = &page_byte_buffer[cell_offset.try_into()?..];
                     let (interior_cell, _) = TableInteriorCell::from_be_bytes(tent)?;
@@ -209,7 +204,11 @@ impl TableBtree {
                     // a mutable access to db_file_handle Rc<RefCell<File>> when someone else is using it.
                     {
                         let mut db_file_handle = self.db_file_handle.borrow_mut();
-                        self.read_page(&mut db_file_handle, &mut new_page_byte_buffer, interior_cell.left_child_page_number)?;
+                        self.read_page(
+                            &mut db_file_handle,
+                            &mut new_page_byte_buffer,
+                            interior_cell.left_child_page_number,
+                        )?;
                     }
 
                     let new_page =
@@ -224,7 +223,11 @@ impl TableBtree {
                 let right_most_pointer_page_number = interior_header.right_most_pointer;
                 {
                     let mut db_file_handle = self.db_file_handle.borrow_mut();
-                    self.read_page(&mut db_file_handle, &mut right_page_byte_buffer, right_most_pointer_page_number)?;
+                    self.read_page(
+                        &mut db_file_handle,
+                        &mut right_page_byte_buffer,
+                        right_most_pointer_page_number,
+                    )?;
                 }
 
                 let right_page =
@@ -265,7 +268,7 @@ impl TableBtree {
 
     fn read_page(&self, db_file_handle: &mut File, buf: &mut Vec<u8>, page_num: u32) -> Result<()> {
         let offset_page_number: u64 = (page_num - 1).try_into()?;
-        let next_page_addr : u64 = offset_page_number * self.page_size as u64;
+        let next_page_addr: u64 = offset_page_number * self.page_size as u64;
         db_file_handle.seek(SeekFrom::Start(next_page_addr))?;
         db_file_handle.read(buf)?;
         Ok(())

@@ -123,21 +123,21 @@ impl IndexLeafCell {
         let total_bytes_of_payload = VarInt::from_be_bytes(cell_content)?;
         let bytes_read = total_bytes_of_payload.1 as usize;
         /*
-         Index B-Tree Leaf Or Interior Cell:
-         The amount of payload that spills onto overflow pages also depends on the page type.
-         For the following computations, let U be the usable size of a database page, the 
-         total page size less the reserved space at the end of each page. 
-         And let P be the payload size. In the following, symbol X represents
-         the maximum amount of payload that can be stored directly on the b-tree
-         page without spilling onto an overflow page and symbol M represents the minimum amount 
-         of payload that must be stored on the btree page before spilling is allowed.
+        Index B-Tree Leaf Or Interior Cell:
+        The amount of payload that spills onto overflow pages also depends on the page type.
+        For the following computations, let U be the usable size of a database page, the
+        total page size less the reserved space at the end of each page.
+        And let P be the payload size. In the following, symbol X represents
+        the maximum amount of payload that can be stored directly on the b-tree
+        page without spilling onto an overflow page and symbol M represents the minimum amount
+        of payload that must be stored on the btree page before spilling is allowed.
 
-         Let X be ((U-12)*64/255)-23.
-         If the payload size P is less than or equal to X then the entire payload is stored on the b-tree page.
-         Let M be ((U-12)*32/255)-23 and let K be M+((P-M)%(U-4)). If P is greater than X then the number of bytes
-         stored on the index b-tree page is K if K is less than or equal to X or M otherwise.
-         The number of bytes stored on the index page is never less than M.
-         */
+        Let X be ((U-12)*64/255)-23.
+        If the payload size P is less than or equal to X then the entire payload is stored on the b-tree page.
+        Let M be ((U-12)*32/255)-23 and let K be M+((P-M)%(U-4)). If P is greater than X then the number of bytes
+        stored on the index b-tree page is K if K is less than or equal to X or M otherwise.
+        The number of bytes stored on the index page is never less than M.
+        */
         let usable_page_size = page_size - reserved_bytes_per_page as u16;
         let x = usable_page_size - 23;
         let m: u64 = ((usable_page_size - 12) as u64 * 32 / 255) - 23;

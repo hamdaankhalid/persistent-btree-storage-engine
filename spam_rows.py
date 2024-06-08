@@ -20,6 +20,7 @@ c = conn.cursor()
 table_name = "RandomData"
 columns = ', '.join(f'{k} {v}' for k, v in schema.items())
 c.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})")
+c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_id ON {table_name} (id)")
 
 # Insert random data
 for _ in range(10000):

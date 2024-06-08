@@ -26,12 +26,12 @@ Offset	Size	Description
 96	4	SQLITE_VERSION_NUMBER
 */
 
+use crate::btree::Btree;
+use crate::sql_data_types::SerialData;
 use anyhow::{bail, Result};
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
-use std::convert::TryInto;
-use crate::btree::TableBtree;
-use crate::sql_data_types::SerialData;
 
 #[derive(Debug)]
 pub enum FileFormatVersion {
@@ -223,10 +223,12 @@ pub struct Database {
     pub db_file: String,
     pub metadata: DataBaseMetadata,
     //  sqlite_schema table contains the root page number for every other table and index in the database file.
-    schema_table_btree: TableBtree,
+    schema_table_btree: Btree,
 }
 
-#[derive(Debug)]
+// Indexes and Tables are both just Tables in the master table, but the index is just a different type.
+// So we can just use the same struct for both
+#[derive(Debug, Clone)]
 pub struct TableInfo {
     pub obj_type: String,
     pub name: String,
@@ -239,7 +241,7 @@ impl Database {
     pub fn from_file(db_file_name: &String) -> Result<Self> {
         let metadata = DataBaseMetadata::read_from_file(db_file_name)?;
 
-        let schema_table_btree = TableBtree::read_schema_table(
+        let schema_table_btree = Btree::read_schema_table(
             db_file_name,
             metadata.page_size.try_into()?,
             metadata.bytes_unused_reserved_space_at_page_end,
@@ -303,20 +305,27 @@ impl Database {
         Ok(results)
     }
 
-    pub fn get_table(&self, table_name: &str) -> Result<TableBtree> {
-        let master_table_rows = self.get_master_table()?;
-        let table = match master_table_rows
-            .iter()
-            .find(|x| x.table_name == table_name)
-        {
-            Some(t) => t,
-            None => bail!("Table not found"),
+    pub fn get_table(&self, table_name: &str) -> Result<Btree> {
+        self.btree_from_info(|x: &TableInfo| x.obj_type == "table" && x.table_name == table_name)
+    }
+
+    pub fn get_index(&self, index_name: &str) -> Result<Btree> {
+        self.btree_from_info(|x: &TableInfo| x.obj_type == "index" && x.name == index_name)
+    }
+
+    fn btree_from_info<F>(&self, predicate: F) -> Result<Btree>
+    where
+        F: Fn(&TableInfo) -> bool,
+    {
+        let info = match self.get_master_table()?.iter().find(|x| predicate(x)) {
+            Some(t) => t.clone(),
+            None => bail!("Obj not found in master table"),
         };
 
-        TableBtree::read_table(
+        Btree::read_table(
             &self.db_file,
             self.metadata.page_size.try_into()?,
-            ((table.root_page_num - 1) * self.metadata.page_size as i64).try_into()?,
+            ((info.root_page_num - 1) * self.metadata.page_size as i64).try_into()?,
             self.metadata.bytes_unused_reserved_space_at_page_end,
         )
     }

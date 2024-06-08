@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::convert::TryInto;
 
-
 // based on page type we will create  page header
 pub enum PageType {
     InteriorIndex,
@@ -75,7 +74,11 @@ impl BtreePage {
     /*
      * Give a buffer and an offset to the header read in the header and return the obj
      */
-    pub fn new(page_byte_buffer: Vec<u8>, offset: usize, reserved_bytes_per_page: u8) -> Result<Self> {
+    pub fn new(
+        page_byte_buffer: Vec<u8>,
+        offset: usize,
+        reserved_bytes_per_page: u8,
+    ) -> Result<Self> {
         let page_type = PageType::from_u8(page_byte_buffer[0 + offset])
             .ok_or(anyhow!("invalid page type of btree page"))?;
 
