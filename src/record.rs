@@ -89,7 +89,6 @@ pub struct OverflowRecord {
 }
 
 impl OverflowRecord {
-    // TODO: I think there is a bug here!
     pub fn from_be_bytes(
         bytes_stored_on_leaf: i64,
         bytes: &[u8],

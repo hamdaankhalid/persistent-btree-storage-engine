@@ -56,78 +56,16 @@ A varint which is the integer key
 
 */
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use std::cell::RefCell;
 use std::io::{Seek, SeekFrom};
 use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
 use crate::cell::{TableInteriorCell, TableLeafCell};
+use crate::page::{BtreePage, PageHeader};
 use crate::record::ReadableRecord;
 use log::debug;
-
-// based on page type we will create  page header
-pub enum PageType {
-    InteriorIndex,
-    InteriorTable,
-    LeafIndex,
-    LeafTable,
-}
-
-impl PageType {
-    pub fn from_u8(val: u8) -> Option<Self> {
-        match val {
-            2 => Some(PageType::InteriorIndex),
-            5 => Some(PageType::InteriorTable),
-            10 => Some(PageType::LeafIndex),
-            13 => Some(PageType::LeafTable),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum PageHeader {
-    Leaf(LeafPageHeader),
-    Interior(InteriorPageHeader),
-}
-
-#[derive(Debug, Clone)]
-pub struct CommonPageHeader {
-    start_of_first_free_block: u16,
-    num_cells: u16,
-    start_of_cell_content_area: u16,
-    num_fragmented_free_bytes: u8,
-}
-
-impl CommonPageHeader {
-    fn from_buffer(page_buffer: &Vec<u8>, offset: usize) -> Result<Self> {
-        let start_of_first_free_block =
-            u16::from_be_bytes(page_buffer[1 + offset..3 + offset].try_into()?);
-        let num_cells = u16::from_be_bytes(page_buffer[3 + offset..5 + offset].try_into()?);
-        let start_of_cell_content_area =
-            u16::from_be_bytes(page_buffer[5 + offset..7 + offset].try_into()?);
-        let num_fragmented_free_bytes = u8::from_be(page_buffer[7 + offset]);
-
-        Ok(CommonPageHeader {
-            start_of_first_free_block,
-            num_cells,
-            start_of_cell_content_area,
-            num_fragmented_free_bytes,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct LeafPageHeader {
-    common_header: CommonPageHeader,
-}
-
-#[derive(Debug, Clone)]
-pub struct InteriorPageHeader {
-    common_header: CommonPageHeader,
-    right_most_pointer: u32,
-}
 
 /*
  * A b-tree page is divided into regions in the following order:
@@ -154,50 +92,9 @@ pub struct InteriorPageHeader {
  * In other words, if the page size is 512, then the reserved space size cannot exceed 32.
 *
 */
-#[derive(Debug, Clone)]
-pub struct BtreePage {
-    page_header: PageHeader,
-    raw_byte_buffer: Vec<u8>,
-    reserved_bytes_per_page: u8,
-}
 
-impl BtreePage {
-    /*
-     * Give a buffer and an offset to the header read in the header and return the obj
-     */
-    fn new(page_byte_buffer: Vec<u8>, offset: usize, reserved_bytes_per_page: u8) -> Result<Self> {
-        let page_type = PageType::from_u8(page_byte_buffer[0 + offset])
-            .ok_or(anyhow!("invalid page type of btree page"))?;
 
-        let common_header = CommonPageHeader::from_buffer(&page_byte_buffer, offset)?;
-
-        let page_header = match page_type {
-            PageType::InteriorIndex | PageType::InteriorTable => {
-                let right_most_pointer =
-                    u32::from_be_bytes(page_byte_buffer[8 + offset..12 + offset].try_into()?);
-                PageHeader::Interior(InteriorPageHeader {
-                    common_header,
-                    right_most_pointer,
-                })
-            }
-            PageType::LeafIndex | PageType::LeafTable => {
-                PageHeader::Leaf(LeafPageHeader { common_header })
-            }
-        };
-
-        Ok(Self {
-            page_header,
-            raw_byte_buffer: page_byte_buffer,
-            reserved_bytes_per_page,
-        })
-    }
-
-    // returns only the byte array for the cell content into th
-    fn get_raw_bytes_buffer(&self) -> &Vec<u8> {
-        &self.raw_byte_buffer
-    }
-}
-
+// TODO: We Dont need TableBtree vs IndexBtree distinction here because the only difference is what we do at the cell and record interpretation level
 
 #[derive(Debug, Clone)]
 pub struct TableBtree {
@@ -229,6 +126,7 @@ impl TableBtree {
         page_offset: usize,
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
+        debug!("Reading Table Btree Page at Offset {}", page_offset);
         TableBtree::read_page_to_table_tree(
             db_file_name,
             page_size,
@@ -279,8 +177,6 @@ impl TableBtree {
         Ok(all_cells.iter().map(|cell| cell.payload.clone()).collect())
     }
 
-    // TODO: There is a BUG here in BTree Traversal for big tables that span multiple pages that causes cells to be missed when running
-    // end to end leaf collection for all rows in the table
     fn traverse_table_btree(
         &self,
         curr_page: &BtreePage,
@@ -300,25 +196,20 @@ impl TableBtree {
                 debug!("Interior Page with {} cells", num_cells);
 
                 for i in 0..num_cells {
-                    let start_offset = i as usize * 2;
                     let cell_offset = u16::from_be_bytes(
-                        cell_pointers[start_offset..start_offset + 2].try_into()?,
+                        cell_pointers[(i*2) as usize..(i*2 + 2) as usize].try_into()?,
                     );
-                    let cell_content = &page_byte_buffer[cell_offset as usize..];
-
-                    let (interior_cell, _) = TableInteriorCell::from_be_bytes(cell_content)?;
+                    let tent = &page_byte_buffer[cell_offset.try_into()?..];
+                    let (interior_cell, _) = TableInteriorCell::from_be_bytes(tent)?;
 
                     // use the db handle to read the said page number
                     let mut new_page_byte_buffer = vec![0; self.page_size];
+                    // explicit block to drop the mutable borrow of db_file_handle before we move on to the next call
+                    // that uses db_file_handle mutably. Since recursive calls are made one at a time, we do not hold
+                    // a mutable access to db_file_handle Rc<RefCell<File>> when someone else is using it.
                     {
-                        // explicit block to drop the mutable borrow of db_file_handle before we move on to the next call
-                        // that uses db_file_handle mutably. Since recursive calls are made one at a time, we do not hold
-                        // a mutable access to db_file_handle Rc<RefCell<File>> when someone else is using it.
                         let mut db_file_handle = self.db_file_handle.borrow_mut();
-                        let next_page_addr = (interior_cell.left_child_page_number as u64 - 1)
-                            * self.page_size as u64;
-                        db_file_handle.seek(SeekFrom::Start(next_page_addr))?;
-                        db_file_handle.read(&mut new_page_byte_buffer)?;
+                        self.read_page(&mut db_file_handle, &mut new_page_byte_buffer, interior_cell.left_child_page_number)?;
                     }
 
                     let new_page =
@@ -327,6 +218,19 @@ impl TableBtree {
                     // use the cell to read the new page directed by the cell, and recursively traverse the tree left to right
                     self.traverse_table_btree(&new_page, cells, false)?;
                 }
+
+                // read the right most child separately
+                let mut right_page_byte_buffer = vec![0; self.page_size];
+                let right_most_pointer_page_number = interior_header.right_most_pointer;
+                {
+                    let mut db_file_handle = self.db_file_handle.borrow_mut();
+                    self.read_page(&mut db_file_handle, &mut right_page_byte_buffer, right_most_pointer_page_number)?;
+                }
+
+                let right_page =
+                    BtreePage::new(right_page_byte_buffer, 0, curr_page.reserved_bytes_per_page)?;
+
+                self.traverse_table_btree(&right_page, cells, false)?;
 
                 Ok(())
             }
@@ -357,5 +261,13 @@ impl TableBtree {
                 Ok(())
             }
         }
+    }
+
+    fn read_page(&self, db_file_handle: &mut File, buf: &mut Vec<u8>, page_num: u32) -> Result<()> {
+        let offset_page_number: u64 = (page_num - 1).try_into()?;
+        let next_page_addr : u64 = offset_page_number * self.page_size as u64;
+        db_file_handle.seek(SeekFrom::Start(next_page_addr))?;
+        db_file_handle.read(buf)?;
+        Ok(())
     }
 }

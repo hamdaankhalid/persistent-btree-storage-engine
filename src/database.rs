@@ -316,7 +316,7 @@ impl Database {
         TableBtree::read_table(
             &self.db_file,
             self.metadata.page_size.try_into()?,
-            ((table.root_page_num - 1) * self.metadata.page_size as i64) as usize,
+            ((table.root_page_num - 1) * self.metadata.page_size as i64).try_into()?,
             self.metadata.bytes_unused_reserved_space_at_page_end,
         )
     }

@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'sqlite-starter-rust'",
+            "name": "Debug executable 'sqlite-rust'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=sqlite-starter-rust",
-                    "--package=sqlite-starter-rust"
+                    "--bin=sqlite-rust",
+                    "--package=sqlite-rust"
                 ],
                 "filter": {
-                    "name": "sqlite-starter-rust",
+                    "name": "sqlite-rust",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'sqlite-starter-rust'",
+            "name": "Debug unit tests in executable 'sqlite-rust'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=sqlite-starter-rust",
-                    "--package=sqlite-starter-rust"
+                    "--bin=sqlite-rust",
+                    "--package=sqlite-rust"
                 ],
                 "filter": {
-                    "name": "sqlite-starter-rust",
+                    "name": "sqlite-rust",
                     "kind": "bin"
                 }
             },

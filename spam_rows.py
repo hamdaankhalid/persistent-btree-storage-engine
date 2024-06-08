@@ -22,7 +22,7 @@ columns = ', '.join(f'{k} {v}' for k, v in schema.items())
 c.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})")
 
 # Insert random data
-for _ in range(100000):  # Insert 100 rows
+for _ in range(10000):
     data = []
     for v in schema.values():
         if v == "INTEGER":
