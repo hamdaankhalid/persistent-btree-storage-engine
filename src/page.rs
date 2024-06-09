@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::convert::TryInto;
 
-// based on page type we will create  page header
+#[derive(Debug, Clone)]
 pub enum PageType {
     InteriorIndex,
     InteriorTable,
@@ -65,6 +65,7 @@ pub struct InteriorPageHeader {
 
 #[derive(Debug, Clone)]
 pub struct BtreePage {
+    pub page_type: PageType,
     pub page_header: PageHeader,
     raw_byte_buffer: Vec<u8>,
     pub reserved_bytes_per_page: u8,
@@ -99,6 +100,7 @@ impl BtreePage {
         };
 
         Ok(Self {
+            page_type,
             page_header,
             raw_byte_buffer: page_byte_buffer,
             reserved_bytes_per_page,

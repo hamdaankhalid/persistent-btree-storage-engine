@@ -62,8 +62,8 @@ use std::io::{Seek, SeekFrom};
 use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
-use crate::cell::{TableInteriorCell, TableLeafCell};
-use crate::page::{BtreePage, PageHeader};
+use crate::cell::{IndexInteriorCell, IndexLeafCell, InteriorCell, LeafCell, TableInteriorCell, TableLeafCell};
+use crate::page::{BtreePage, PageHeader, PageType};
 use crate::record::ReadableRecord;
 use log::debug;
 
@@ -93,18 +93,22 @@ use log::debug;
 *
 */
 
-/*
- TODO: We Dont need TableBtree vs IndexBtree distinction here because the only difference is what we do at the cell and record interpretation level
-*/
+#[derive(Debug, Clone)]
+enum BtreeType {
+    Table,
+    Index,
+}
 
 #[derive(Debug, Clone)]
 pub struct Btree {
+    btree_type: BtreeType,
     db_file_name: String,
     db_file_handle: Rc<RefCell<File>>,
     page_size: usize,
     root_page: BtreePage,
 }
 
+// TODO: We just need to adjust Cell reading and aggregation to be generic
 impl Btree {
     // schema table is special because it has an extra 100 bytes of database header
     pub fn read_schema_table(
@@ -112,7 +116,7 @@ impl Btree {
         page_size: usize,
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
-        Btree::read_page_to_table_tree(db_file_name, page_size, 0, 100, reserved_bytes_per_page)
+        Btree::read_page_to_tree(db_file_name, page_size, 0, 100, reserved_bytes_per_page)
     }
 
     pub fn read_table(
@@ -122,7 +126,7 @@ impl Btree {
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
         debug!("Reading Table Btree Page at Offset {}", page_offset);
-        Btree::read_page_to_table_tree(
+        Btree::read_page_to_tree(
             db_file_name,
             page_size,
             page_offset,
@@ -131,7 +135,7 @@ impl Btree {
         )
     }
 
-    fn read_page_to_table_tree(
+    fn read_page_to_tree(
         db_file_name: &str,
         page_size: usize,
         page_offset: usize,
@@ -155,6 +159,10 @@ impl Btree {
         let root_page = BtreePage::new(buffer, header_offset, reserved_bytes_per_page)?;
 
         Ok(Btree {
+            btree_type: match root_page.page_type {
+                PageType::LeafTable | PageType::InteriorTable => BtreeType::Table,
+                PageType::LeafIndex | PageType::InteriorIndex => BtreeType::Index,
+            },
             db_file_name: db_file_name.to_string(),
             db_file_handle: Rc::new(RefCell::new(db_file_handle)),
             page_size,
@@ -169,13 +177,13 @@ impl Btree {
 
         self.traverse_table_btree(&self.root_page, &mut all_cells, is_root_db_page)?;
 
-        Ok(all_cells.iter().map(|cell| cell.payload.clone()).collect())
+        Ok(all_cells.iter().map(|cell| cell.get_readable_record()).collect())
     }
 
     fn traverse_table_btree(
         &self,
         curr_page: &BtreePage,
-        cells: &mut Vec<TableLeafCell>,
+        cells: &mut Vec<LeafCell>,
         is_root_db_page: bool,
     ) -> Result<()> {
         let page_byte_buffer = curr_page.get_raw_bytes_buffer();
@@ -195,7 +203,18 @@ impl Btree {
                         cell_pointers[(i * 2) as usize..(i * 2 + 2) as usize].try_into()?,
                     );
                     let tent = &page_byte_buffer[cell_offset.try_into()?..];
-                    let (interior_cell, _) = TableInteriorCell::from_be_bytes(tent)?;
+                    let interior_cell = match self.btree_type {
+                        BtreeType::Table => {
+                            let (cell, _) = TableInteriorCell::from_be_bytes(tent)?;
+                            InteriorCell::Table(cell)
+                        }
+                        BtreeType::Index => {
+                            let (cell, _) = IndexInteriorCell::from_be_bytes(tent)?;
+                            InteriorCell::Index(cell)
+                        }
+                    };
+                    
+                    TableInteriorCell::from_be_bytes(tent)?;
 
                     // use the db handle to read the said page number
                     let mut new_page_byte_buffer = vec![0; self.page_size];
@@ -204,10 +223,10 @@ impl Btree {
                     // a mutable access to db_file_handle Rc<RefCell<File>> when someone else is using it.
                     {
                         let mut db_file_handle = self.db_file_handle.borrow_mut();
-                        self.read_page(
+                        self.read_page_into_buffer(
                             &mut db_file_handle,
                             &mut new_page_byte_buffer,
-                            interior_cell.left_child_page_number,
+                            interior_cell.get_left_child_page_number(),
                         )?;
                     }
 
@@ -223,7 +242,7 @@ impl Btree {
                 let right_most_pointer_page_number = interior_header.right_most_pointer;
                 {
                     let mut db_file_handle = self.db_file_handle.borrow_mut();
-                    self.read_page(
+                    self.read_page_into_buffer(
                         &mut db_file_handle,
                         &mut right_page_byte_buffer,
                         right_most_pointer_page_number,
@@ -252,12 +271,29 @@ impl Btree {
                         cell_pointers[i as usize * 2..i as usize * 2 + 2].try_into()?,
                     );
                     let cell_content = &page_byte_buffer[cell_offset as usize..];
-                    let (cell, _) = TableLeafCell::from_be_bytes(
-                        self.db_file_name.clone(),
-                        cell_content,
-                        self.page_size.try_into()?,
-                        curr_page.reserved_bytes_per_page,
-                    )?;
+                    
+                    // Based on btree type use the appropriate type for cell parsing
+                    let cell = match self.btree_type {
+                        BtreeType::Table => {
+                            let (cell, _) = TableLeafCell::from_be_bytes(
+                                self.db_file_name.clone(),
+                                cell_content,
+                                self.page_size.try_into()?,
+                                curr_page.reserved_bytes_per_page,
+                            )?;
+                            LeafCell::Table(cell)
+                        },
+                        BtreeType::Index => {
+                            let (cell, _) = IndexLeafCell::from_be_bytes(
+                                self.db_file_name.clone(),
+                                cell_content,
+                                self.page_size.try_into()?,
+                                curr_page.reserved_bytes_per_page,
+                            )?;
+                            LeafCell::Index(cell)
+                        },
+                    };
+
                     cells.push(cell);
                 }
 
@@ -266,7 +302,7 @@ impl Btree {
         }
     }
 
-    fn read_page(&self, db_file_handle: &mut File, buf: &mut Vec<u8>, page_num: u32) -> Result<()> {
+    fn read_page_into_buffer(&self, db_file_handle: &mut File, buf: &mut Vec<u8>, page_num: u32) -> Result<()> {
         let offset_page_number: u64 = (page_num - 1).try_into()?;
         let next_page_addr: u64 = offset_page_number * self.page_size as u64;
         db_file_handle.seek(SeekFrom::Start(next_page_addr))?;

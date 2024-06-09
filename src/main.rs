@@ -65,7 +65,15 @@ fn main() -> Result<()> {
             let index_name = &args[3];
             let idx_table = database.get_index(index_name)?;
 
-            println!("Index {:?}", idx_table);
+            let rows = idx_table.get_rows(false)?;
+            let num_rows = rows.len();
+
+            println!("{num_rows} Rows for Index {index_name}:");
+
+            for row in rows {
+                let row_data = row.clone().read_record()?;
+                println!("{:?}", row_data);
+            }
         }
         _ => bail!("Unknown command: {command}"),
     }

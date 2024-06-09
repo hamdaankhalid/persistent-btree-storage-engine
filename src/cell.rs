@@ -175,3 +175,56 @@ impl IndexLeafCell {
         ))
     }
 }
+
+pub struct IndexInteriorCell {
+    pub left_child_page_number: u32,
+    pub total_bytes_of_payload: VarInt,
+    pub payload: ReadableRecord,
+}
+
+impl IndexInteriorCell {
+    pub fn from_be_bytes(cell_content: &[u8]) -> Result<(Self, u64)> {
+        let left_child_page_number = u32::from_be_bytes(cell_content[..4].try_into()?);
+
+        let total_bytes_of_payload = VarInt::from_be_bytes(&cell_content[4..])?;
+        let bytes_read = total_bytes_of_payload.1 as u64;
+
+        Ok((
+            Self {
+                left_child_page_number,
+                total_bytes_of_payload,
+                payload: ReadableRecord::Fit(Record::from_be_bytes(&cell_content[4..])?.0),
+            },
+            4 + bytes_read,
+        ))
+    }
+}
+
+// Enum to standardize cell aggregations
+pub enum LeafCell {
+    Table(TableLeafCell),
+    Index(IndexLeafCell),
+}
+
+impl LeafCell {
+    pub fn get_readable_record(&self) -> ReadableRecord {
+        match self {
+            LeafCell::Table(cell) => cell.payload.clone(),
+            LeafCell::Index(cell) => cell.payload.clone(),
+        }
+    }
+}
+
+pub enum InteriorCell {
+    Table(TableInteriorCell),
+    Index(IndexInteriorCell),
+}
+
+impl InteriorCell {
+    pub fn get_left_child_page_number(&self) -> u32 {
+        match self {
+            InteriorCell::Table(cell) => cell.left_child_page_number,
+            InteriorCell::Index(cell) => cell.left_child_page_number,
+        }
+    }
+}
