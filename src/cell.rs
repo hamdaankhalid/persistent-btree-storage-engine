@@ -184,6 +184,7 @@ impl IndexLeafCell {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct IndexInteriorCell {
     pub left_child_page_number: u32,
     pub total_bytes_of_payload: VarInt,
@@ -195,30 +196,32 @@ impl IndexInteriorCell {
         let left_child_page_number = u32::from_be_bytes(cell_content[..4].try_into()?);
 
         let total_bytes_of_payload = VarInt::from_be_bytes(&cell_content[4..])?;
-        let bytes_read = total_bytes_of_payload.1 as u64;
+        let bytes_read = 4+total_bytes_of_payload.1 as u64;
 
         Ok((
             Self {
                 left_child_page_number,
                 total_bytes_of_payload,
-                payload: ReadableRecord::Fit(Record::from_be_bytes(&cell_content[4..])?.0),
+                payload: ReadableRecord::Fit(Record::from_be_bytes(&cell_content[bytes_read as usize..])?.0),
             },
-            4 + bytes_read,
+            bytes_read,
         ))
     }
 }
 
 // Enum to standardize cell aggregations
-pub enum LeafCell {
+pub enum DataCell {
     Table(TableLeafCell),
-    Index(IndexLeafCell),
+    IndexLeaf(IndexLeafCell),
+    IndexInterior(IndexInteriorCell),
 }
 
-impl LeafCell {
+impl DataCell {
     pub fn get_readable_record(&self) -> ReadableRecord {
         match self {
-            LeafCell::Table(cell) => cell.payload.clone(),
-            LeafCell::Index(cell) => cell.payload.clone(),
+            DataCell::Table(cell) => cell.payload.clone(),
+            DataCell::IndexLeaf(cell) => cell.payload.clone(),
+            DataCell::IndexInterior(cell) => cell.payload.clone(),
         }
     }
 }

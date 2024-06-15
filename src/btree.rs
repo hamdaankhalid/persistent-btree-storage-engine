@@ -63,7 +63,7 @@ use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
 use crate::cell::{
-    IndexInteriorCell, IndexLeafCell, InteriorCell, LeafCell, TableInteriorCell, TableLeafCell,
+    IndexInteriorCell, IndexLeafCell, InteriorCell, DataCell, TableInteriorCell, TableLeafCell,
 };
 use crate::page::{BtreePage, PageHeader, PageType};
 use crate::record::ReadableRecord;
@@ -187,7 +187,7 @@ impl Btree {
     fn traverse_table_btree(
         &self,
         curr_page: &BtreePage,
-        cells: &mut Vec<LeafCell>,
+        cells: &mut Vec<DataCell>,
         is_root_db_page: bool,
     ) -> Result<()> {
         let page_byte_buffer = curr_page.get_raw_bytes_buffer();
@@ -206,7 +206,7 @@ impl Btree {
                     let cell_offset = u16::from_be_bytes(
                         cell_pointers[(i * 2) as usize..(i * 2 + 2) as usize].try_into()?,
                     );
-                    let tent = &page_byte_buffer[cell_offset.try_into()?..];
+                    let tent: &[u8] = &page_byte_buffer[cell_offset.try_into()?..];
                     let interior_cell = match self.btree_type {
                         BtreeType::Table => {
                             let (cell, _) = TableInteriorCell::from_be_bytes(tent)?;
@@ -214,7 +214,9 @@ impl Btree {
                         }
                         BtreeType::Index => {
                             let (cell, _) = IndexInteriorCell::from_be_bytes(tent)?;
-                            InteriorCell::Index(cell)
+                            let index_interior_cell = InteriorCell::Index(cell.clone());
+                            cells.push(DataCell::IndexInterior(cell));
+                            index_interior_cell
                         }
                     };
 
@@ -283,7 +285,7 @@ impl Btree {
                                 self.page_size.try_into()?,
                                 curr_page.reserved_bytes_per_page,
                             )?;
-                            LeafCell::Table(cell)
+                            DataCell::Table(cell)
                         },
                         BtreeType::Index => {
                             let (cell, _) = IndexLeafCell::from_be_bytes(
@@ -292,7 +294,7 @@ impl Btree {
                                 self.page_size.try_into()?,
                                 curr_page.reserved_bytes_per_page,
                             )?;
-                            LeafCell::Index(cell)
+                            DataCell::IndexLeaf(cell)
                         }
                     };
 

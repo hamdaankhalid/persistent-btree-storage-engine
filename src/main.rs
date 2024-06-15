@@ -21,6 +21,7 @@ fn main() -> Result<()> {
 
     let database: Database = Database::from_file(&args[1])?;
     // Parse command and act accordingly
+    // Temporaru Driver program so I can test my top level api's for the database
     let command = &args[2];
     match command.as_str() {
         ".dbinfo" => {
@@ -48,8 +49,6 @@ fn main() -> Result<()> {
             // currently only supports select * from <table_name>
             // run the processed query on the VM
             let table = database.get_table(table_name)?;
-
-            println!("Table {:?}", table);
 
             let rows = table.get_rows(false)?;
             let num_rows = rows.len();
