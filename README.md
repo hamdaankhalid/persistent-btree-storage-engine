@@ -1,5 +1,9 @@
 # Extracting && Implementing the Sqlite Storage Engine
 
+## Credits:
+Used Codecrafters starting point to build an understanding of metadata for the file format, so thanks to them :)
+Then I took that project and created this monstrosity from the initial project
+
 ## Out of scope
 SQL frontend, and joins. I just want a simple Storage Engine based on persistent BTrees
 
