@@ -59,6 +59,7 @@ A varint which is the integer key
 use anyhow::{bail, Result};
 use std::cell::RefCell;
 use std::io::{Seek, SeekFrom};
+use std::path::Iter;
 use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
@@ -317,5 +318,22 @@ impl Btree {
         db_file_handle.seek(SeekFrom::Start(next_page_addr))?;
         db_file_handle.read(buf)?;
         Ok(())
+    }
+}
+
+// TODO: An abstraction for a next() method for the Btree struct that returns the next node. This introduces state, but lets us do stuff in a more controlled manner
+pub struct BtreeIterator {
+    btree: Btree,
+    curr_page: BtreePage,
+    curr_cell: usize,
+}
+
+impl BtreeIterator {
+    pub fn new(btree: Btree) -> Self {
+        BtreeIterator {
+            btree: btree.clone(),
+            curr_page: btree.root_page.clone(),
+            curr_cell: 0,
+        }
     }
 }

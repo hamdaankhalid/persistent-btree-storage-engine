@@ -1,16 +1,30 @@
-# SQLITE database but native built library format for Rust
-Motivation, DB engine that I can use in rust projects without any SQL obfuscation. I'm too stupid to write my own Storage engine from scratch so I will use the SQLITE Spec for storage engine layer, then see what fun stuff I can do around the datbase engine/query layer.
+# Extracting && Implementing the Sqlite Storage Engine
 
-## Roadmap
+## Out of scope
+SQL frontend, and joins. I just want a simple Storage Engine based on persistent BTrees
 
+## Motivation
+I wanted to write a persistent Btree Storage engine, by implementing the SQLITE database file format I can use their page based BTree Schema along with all the well known exploration tools on it, and then write my API layer on top of my btree implementation.
+This is a learning project, and I want to explore other ways of building a storage engine.
+
+## Supported APIs
 ### Read Path
-- Metadata and info command support. DONE
-- Ability to read tables. DONE
-- Abiltity to leverage Indices. WIP
-- SQL-Like Rust interface to perform queries on tables.
+Get(Table, Fields[], Filters[]))
 
 ### Write Path
-- Transaction support
+Create(DatabaseName)
+Delete(DatabaseName)
+Create(TableName, Schema)
+Delete(TableName)
+Set(Table, Fields, Values)
+Transaction(Commands[])
+
+### Read Path
+- Ability to read tables. DONE
+- Abiltity to leverage Indices for filters.
+
+### Write Path -> NO CLUE HOW TO DO THIS STILL.. Need to dive deeper here
+- Transaction support, for multiple entries at once
 - WAL support
 - ETC...
 
