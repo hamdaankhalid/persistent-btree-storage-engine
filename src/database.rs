@@ -27,8 +27,9 @@ Offset	Size	Description
 */
 
 use crate::btree::Btree;
-use crate::sql_data_types::SerialData;
+use crate::sql_data_types::{SerialData, SerialType};
 use anyhow::{bail, Result};
+use nom::character::complete::tab;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
@@ -219,6 +220,8 @@ impl DataBaseMetadata {
     }
 }
 
+// While we may call this a database struct this is actually just holding metadata shit
+// most of the actual stuff is happening in our btree
 pub struct Database {
     pub db_file: String,
     pub metadata: DataBaseMetadata,
@@ -313,14 +316,39 @@ impl Database {
         self.btree_from_info(|x: &TableInfo| x.obj_type == "index" && x.name == index_name)
     }
 
+    pub fn get_indices_for_table(&self, table_name: &str) -> Result<Vec<Btree>> {
+        let mut results = Vec::new();
+        let records = self.get_master_table()?;
+        for record in records {
+            if record.obj_type == "index" && record.table_name == table_name {
+                results.push(Btree::read_table(
+                    &self.db_file,
+                    self.metadata.page_size.try_into()?,
+                    ((record.root_page_num - 1) * self.metadata.page_size as i64).try_into()?,
+                    self.metadata.bytes_unused_reserved_space_at_page_end,
+                )?);
+            }
+        }
+
+        Ok(results)
+    }
+
+    pub fn get_table_columns(&self, table_name: &str) -> Result<Vec<(String, SerialType)>> {
+        // Parse the Create SQL message to do this?
+        let table_finder = |x: &TableInfo| x.obj_type == "table" && x.table_name == table_name;
+        let table_info = self.get_obj_info(table_finder)?;
+
+        // now use the stored create statement to parse shit
+        let schema = find_schema_from_create_stmt(table_info.sql)?;
+
+        todo!()
+    }
+
     fn btree_from_info<F>(&self, predicate: F) -> Result<Btree>
     where
         F: Fn(&TableInfo) -> bool,
     {
-        let info = match self.get_master_table()?.iter().find(|x| predicate(x)) {
-            Some(t) => t.clone(),
-            None => bail!("Obj not found in master table"),
-        };
+        let info = self.get_obj_info(predicate)?;
 
         Btree::read_table(
             &self.db_file,
@@ -328,5 +356,15 @@ impl Database {
             ((info.root_page_num - 1) * self.metadata.page_size as i64).try_into()?,
             self.metadata.bytes_unused_reserved_space_at_page_end,
         )
+    }
+
+    fn get_obj_info<F>(&self, predicate: F) -> Result<TableInfo>
+    where
+        F: Fn(&TableInfo) -> bool,
+    {
+        match self.get_master_table()?.iter().find(|x| predicate(x)) {
+            Some(t) => Ok(t.clone()),
+            None => bail!("Obj not found in master table"),
+        }
     }
 }

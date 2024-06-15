@@ -66,7 +66,10 @@ impl Record {
             serial_types.push(SerialType::from_varint(serial_type_varint)?);
         }
 
-        assert!(bytes_read_so_far == end_of_header_idx, "Header size mismatch");
+        assert!(
+            bytes_read_so_far == end_of_header_idx,
+            "Header size mismatch"
+        );
 
         // now from serial types array read the body and create serial_data
         let mut serial_data = Vec::new();
@@ -274,15 +277,13 @@ mod test {
 
     #[test]
     fn test_record_from_buf() {
-        let bytes: [u8; 4] = [
-            0x03, 0x01, 0x09, 0x4B
-        ];
+        let bytes: [u8; 4] = [0x03, 0x01, 0x09, 0x4B];
 
         let record = Record::from_be_bytes(&bytes);
         assert!(record.is_ok());
 
         let (record, _) = record.unwrap();
-        
+
         assert!(record.serial_data.len() == 2);
         match record.serial_data[0] {
             SerialData::I8(val) => {
@@ -294,7 +295,7 @@ mod test {
         match record.serial_data[1] {
             SerialData::One => {
                 assert!(true);
-            },
+            }
             _ => assert!(false, "Expected Serial Data One"),
         }
     }

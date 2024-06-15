@@ -1,22 +1,11 @@
-# LLD
+# Rough notes I am collecting as I code shit
 
-Main driver interacts with Database object, and issues commnds to it.
+Index just holds the data and the row ID, the row ID
+can then be used to perform an O(log(N)) lookup on table btree
 
-Database object keeps metadata and schema table btree after loading it on instantiation in memory.
-
-Database on instantiation needs to use the file handle to seek and read.
-
-Each btree is composed of root page, and has metadata about stuff like page size.
-
-Btree should be able to load pages into memory as it is traversed so it needs its own File handle.
-
-There is essentially 2 types of btrees, Table, and Index they both have the same interface of being able to traverse shit by reading disk.
-
-
-#######
-4 3 t 1 k
-
-4 is the entire payload size
-
-If the payload is indeex record format then,
-3 t 1 k
+we basically want to support 2 interfaces on any BTREE
+- find One 
+- find many
+- find supports filtering on indices and properties
+- if you choose to involve an index you can only support strict equality for now.
+- for all other properties we can use lambda functions to do filtering.

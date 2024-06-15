@@ -64,7 +64,7 @@ use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
 use crate::cell::{
-    IndexInteriorCell, IndexLeafCell, InteriorCell, DataCell, TableInteriorCell, TableLeafCell,
+    DataCell, IndexInteriorCell, IndexLeafCell, InteriorCell, TableInteriorCell, TableLeafCell,
 };
 use crate::page::{BtreePage, PageHeader, PageType};
 use crate::record::ReadableRecord;
@@ -177,7 +177,7 @@ impl Btree {
     pub fn get_rows(&self, is_root_db_page: bool) -> Result<Vec<ReadableRecord>> {
         let mut all_cells = Vec::new();
 
-       self.traverse_table_btree(&self.root_page, &mut all_cells, is_root_db_page)?;
+        self.traverse_table_btree(&self.root_page, &mut all_cells, is_root_db_page)?;
 
         Ok(all_cells
             .iter()
@@ -287,7 +287,7 @@ impl Btree {
                                 curr_page.reserved_bytes_per_page,
                             )?;
                             DataCell::Table(cell)
-                        },
+                        }
                         BtreeType::Index => {
                             let (cell, _) = IndexLeafCell::from_be_bytes(
                                 self.db_file_name.clone(),

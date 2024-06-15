@@ -196,13 +196,15 @@ impl IndexInteriorCell {
         let left_child_page_number = u32::from_be_bytes(cell_content[..4].try_into()?);
 
         let total_bytes_of_payload = VarInt::from_be_bytes(&cell_content[4..])?;
-        let bytes_read = 4+total_bytes_of_payload.1 as u64;
+        let bytes_read = 4 + total_bytes_of_payload.1 as u64;
 
         Ok((
             Self {
                 left_child_page_number,
                 total_bytes_of_payload,
-                payload: ReadableRecord::Fit(Record::from_be_bytes(&cell_content[bytes_read as usize..])?.0),
+                payload: ReadableRecord::Fit(
+                    Record::from_be_bytes(&cell_content[bytes_read as usize..])?.0,
+                ),
             },
             bytes_read,
         ))
