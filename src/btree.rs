@@ -62,7 +62,9 @@ use std::io::{Seek, SeekFrom};
 use std::rc::Rc;
 use std::{convert::TryInto, fs::File, io::Read};
 
-use crate::cell::{IndexInteriorCell, IndexLeafCell, InteriorCell, LeafCell, TableInteriorCell, TableLeafCell};
+use crate::cell::{
+    IndexInteriorCell, IndexLeafCell, InteriorCell, LeafCell, TableInteriorCell, TableLeafCell,
+};
 use crate::page::{BtreePage, PageHeader, PageType};
 use crate::record::ReadableRecord;
 use log::debug;
@@ -108,7 +110,6 @@ pub struct Btree {
     root_page: BtreePage,
 }
 
-// TODO: We just need to adjust Cell reading and aggregation to be generic
 impl Btree {
     // schema table is special because it has an extra 100 bytes of database header
     pub fn read_schema_table(
@@ -125,7 +126,7 @@ impl Btree {
         page_offset: usize,
         reserved_bytes_per_page: u8,
     ) -> Result<Self> {
-        debug!("Reading Table Btree Page at Offset {}", page_offset);
+        debug!("Reading Btree Root Page at Offset {}", page_offset);
         Btree::read_page_to_tree(
             db_file_name,
             page_size,
@@ -175,9 +176,12 @@ impl Btree {
     pub fn get_rows(&self, is_root_db_page: bool) -> Result<Vec<ReadableRecord>> {
         let mut all_cells = Vec::new();
 
-        self.traverse_table_btree(&self.root_page, &mut all_cells, is_root_db_page)?;
+       self.traverse_table_btree(&self.root_page, &mut all_cells, is_root_db_page)?;
 
-        Ok(all_cells.iter().map(|cell| cell.get_readable_record()).collect())
+        Ok(all_cells
+            .iter()
+            .map(|cell| cell.get_readable_record())
+            .collect())
     }
 
     fn traverse_table_btree(
@@ -213,8 +217,6 @@ impl Btree {
                             InteriorCell::Index(cell)
                         }
                     };
-                    
-                    TableInteriorCell::from_be_bytes(tent)?;
 
                     // use the db handle to read the said page number
                     let mut new_page_byte_buffer = vec![0; self.page_size];
@@ -261,7 +263,7 @@ impl Btree {
                 let num_cells = leaf_header.common_header.num_cells;
                 // read cell pointer array
                 let start_cell_pointer = if is_root_db_page { 100 + 8 } else { 8 }; // 100 from DB Header if is root db page which has extra header on page
-                let end_cell_pointer = start_cell_pointer + num_cells as usize * 2;
+                let end_cell_pointer = start_cell_pointer + (num_cells as usize * 2);
                 let cell_pointers = &page_byte_buffer[start_cell_pointer..end_cell_pointer];
 
                 debug!("Leaf Page with {} cells", num_cells);
@@ -271,7 +273,7 @@ impl Btree {
                         cell_pointers[i as usize * 2..i as usize * 2 + 2].try_into()?,
                     );
                     let cell_content = &page_byte_buffer[cell_offset as usize..];
-                    
+
                     // Based on btree type use the appropriate type for cell parsing
                     let cell = match self.btree_type {
                         BtreeType::Table => {
@@ -291,7 +293,7 @@ impl Btree {
                                 curr_page.reserved_bytes_per_page,
                             )?;
                             LeafCell::Index(cell)
-                        },
+                        }
                     };
 
                     cells.push(cell);
@@ -302,7 +304,12 @@ impl Btree {
         }
     }
 
-    fn read_page_into_buffer(&self, db_file_handle: &mut File, buf: &mut Vec<u8>, page_num: u32) -> Result<()> {
+    fn read_page_into_buffer(
+        &self,
+        db_file_handle: &mut File,
+        buf: &mut Vec<u8>,
+        page_num: u32,
+    ) -> Result<()> {
         let offset_page_number: u64 = (page_num - 1).try_into()?;
         let next_page_addr: u64 = offset_page_number * self.page_size as u64;
         db_file_handle.seek(SeekFrom::Start(next_page_addr))?;

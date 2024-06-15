@@ -53,29 +53,34 @@ pub struct Record {
 
 impl Record {
     pub fn from_be_bytes(bytes: &[u8]) -> Result<(Self, u64)> {
-        let mut total_offset = 0;
-        let header_size_varint = VarInt::from_be_bytes(&bytes[total_offset..])?;
-        total_offset += header_size_varint.1 as usize;
+        let header_size_varint = VarInt::from_be_bytes(&bytes)?;
+        // track how many bytes varint was composed of
+        let mut bytes_read_so_far = header_size_varint.1 as usize;
+        // we know varint header size is folowed by header section, given that we know header size we know end of header
+        let end_of_header_idx = header_size_varint.0 as usize; // includes size of header varint itself
 
         let mut serial_types = Vec::new();
-        while total_offset < header_size_varint.0 as usize {
-            let serial_type_varint = VarInt::from_be_bytes(&bytes[total_offset..])?;
-            total_offset += serial_type_varint.1 as usize;
-
+        while bytes_read_so_far < end_of_header_idx {
+            let serial_type_varint = VarInt::from_be_bytes(&bytes[bytes_read_so_far..])?;
+            bytes_read_so_far += serial_type_varint.1 as usize;
             serial_types.push(SerialType::from_varint(serial_type_varint)?);
         }
 
-        let body = &bytes[total_offset..];
+        assert!(bytes_read_so_far == end_of_header_idx, "Header size mismatch");
 
-        let mut offset = 0;
         // now from serial types array read the body and create serial_data
         let mut serial_data = Vec::new();
         for serial_type in serial_types {
-            let (data, bytes_read) = serial_type.serial_type_to_serial_data(&body[offset..])?;
-            offset += bytes_read;
+            let (data, bytes_read) = if bytes_read_so_far < bytes.len() {
+                serial_type.serial_type_to_serial_data(&bytes[bytes_read_so_far..])?
+            } else {
+                serial_type.serial_type_to_serial_data(&[])? // if we are at the end of the buffer, we can just pass an empty slice, if it is a data type that uses buffer we will get an error bubble up
+            };
+
+            bytes_read_so_far += bytes_read;
             serial_data.push(data);
         }
-        Ok((Record { serial_data }, (total_offset + offset).try_into()?))
+        Ok((Record { serial_data }, bytes_read_so_far.try_into()?))
     }
 }
 
@@ -259,6 +264,38 @@ impl ReadableRecord {
         match self {
             ReadableRecord::Fit(fitting) => Ok(fitting.serial_data.clone()),
             ReadableRecord::Lazy(overflowing) => overflowing.read_record(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_record_from_buf() {
+        let bytes: [u8; 4] = [
+            0x03, 0x01, 0x09, 0x4B
+        ];
+
+        let record = Record::from_be_bytes(&bytes);
+        assert!(record.is_ok());
+
+        let (record, _) = record.unwrap();
+        
+        assert!(record.serial_data.len() == 2);
+        match record.serial_data[0] {
+            SerialData::I8(val) => {
+                assert!(val == 75);
+            }
+            _ => assert!(false, "Expected I8"),
+        }
+
+        match record.serial_data[1] {
+            SerialData::One => {
+                assert!(true);
+            },
+            _ => assert!(false, "Expected Serial Data One"),
         }
     }
 }

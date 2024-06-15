@@ -121,7 +121,7 @@ impl IndexLeafCell {
         reserved_bytes_per_page: u8,
     ) -> Result<(Self, u64)> {
         let total_bytes_of_payload = VarInt::from_be_bytes(cell_content)?;
-        let bytes_read = total_bytes_of_payload.1 as usize;
+        let mut bytes_read = total_bytes_of_payload.1 as usize;
         /*
         Index B-Tree Leaf Or Interior Cell:
         The amount of payload that spills onto overflow pages also depends on the page type.
@@ -139,21 +139,22 @@ impl IndexLeafCell {
         The number of bytes stored on the index page is never less than M.
         */
         let usable_page_size = page_size - reserved_bytes_per_page as u16;
-        let x = usable_page_size - 23;
-        let m: u64 = ((usable_page_size - 12) as u64 * 32 / 255) - 23;
-        let k = m as i64
-            + ((total_bytes_of_payload.0 as i64 - m as i64) % (usable_page_size as i64 - 4));
-        let bytes_stored_on_leaf_page = if total_bytes_of_payload.0 <= x as i64 {
-            total_bytes_of_payload.0
-        } else {
-            if k <= x as i64 {
-                k
-            } else {
-                m as i64
-            }
-        };
+        let x = (((usable_page_size as f64 - 12.0) * 64.0 / 255.0) - 23.0).round() as i32;
 
         let record = if total_bytes_of_payload.0 > x.try_into()? {
+            let m: u64 = ((usable_page_size - 12) as u64 * 32 / 255) - 23;
+            let k = m as i64
+                + ((total_bytes_of_payload.0 as i64 - m as i64) % (usable_page_size as i64 - 4));
+            let bytes_stored_on_leaf_page = if total_bytes_of_payload.0 <= x as i64 {
+                total_bytes_of_payload.0
+            } else {
+                if k <= x as i64 {
+                    k
+                } else {
+                    m as i64
+                }
+            };
+
             let record = OverflowRecord::from_be_bytes(
                 bytes_stored_on_leaf_page,
                 &cell_content[bytes_read..],
@@ -162,7 +163,14 @@ impl IndexLeafCell {
             )?;
             ReadableRecord::Lazy(record.0)
         } else {
+            // TODO: MAYBE WE NEED TO TRACK IT AS KEY NOT RECORD!?
+            // BUG CAUGHT! Each entry in an index b-tree consists of an arbitrary key of up to 2147483647 bytes in length and no data
+            // THIS IS DFIFERENT FROM FUCKING TABLE BTREE THAT STORES REcord in FUCKING Entry
+            if total_bytes_of_payload.0 > (cell_content.len() - bytes_read) as i64 {
+                panic!("Corrupted leaf index cell");
+            }
             let record = Record::from_be_bytes(&cell_content[bytes_read..])?;
+            bytes_read += record.1 as usize;
             ReadableRecord::Fit(record.0)
         };
 

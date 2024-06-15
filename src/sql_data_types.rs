@@ -178,12 +178,11 @@ impl std::fmt::Display for SerialDataError {
 
 impl SerialType {
     pub fn serial_type_to_serial_data(&self, body: &[u8]) -> anyhow::Result<(SerialData, usize)> {
-        if body.is_empty() {
-            return Err(SerialDataError::OutOfBounds.into());
-        }
-
         match self {
             SerialType::Null => Ok((SerialData::Null, 0)),
+            SerialType::Zero => Ok((SerialData::Zero, 0)),
+            SerialType::One => Ok((SerialData::One, 0)),
+            SerialType::Reserved => Ok((SerialData::Reserved, 0)),
             SerialType::I8 => {
                 let data = body[0].try_into()?;
                 Ok((SerialData::I8(data), 1))
@@ -240,9 +239,6 @@ impl SerialType {
                 let data = f64::from_be_bytes(body[..8].try_into()?);
                 Ok((SerialData::F64(data), 8))
             }
-            SerialType::Zero => Ok((SerialData::Zero, 0)),
-            SerialType::One => Ok((SerialData::One, 0)),
-            SerialType::Reserved => Ok((SerialData::Reserved, 0)),
             SerialType::Blob(size) => {
                 let end_offset = *size as usize;
                 if end_offset > body.len() {
