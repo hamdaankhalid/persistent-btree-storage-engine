@@ -339,7 +339,7 @@ impl Database {
         let table_info = self.get_obj_info(table_finder)?;
 
         // now use the stored create statement to parse shit
-        let schema = find_schema_from_create_stmt(table_info.sql)?;
+        // let schema = find_schema_from_create_stmt(table_info.sql)?;
 
         todo!()
     }

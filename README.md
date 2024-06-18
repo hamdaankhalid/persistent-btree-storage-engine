@@ -20,7 +20,7 @@ Create(DatabaseName)
 Delete(DatabaseName)
 Create(TableName, Schema)
 Delete(TableName)
-Set(Table, Fields, Values)
+Insert(Table, Fields, Values)
 Transaction(Commands[])
 
 ### Read Path

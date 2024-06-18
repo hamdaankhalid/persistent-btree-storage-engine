@@ -126,14 +126,15 @@ fn main() -> Result<()> {
 
             let columns_raw = args[4].as_str(); // "," delimitted column names, and * for all
 
+            // ","" delimitted "" based key value pairs, key and values are separated by =, <,>,!=
             let filters_raw = if args.len() >= 7 {
-                Some(&args[5]) // ","" delimitted "" based key value pairs, key and values are separated by =, <,>,!=
+                Some(&args[5])
             } else {
                 None
             };
 
+            // "," delimitted column and "=" P.S this is optional
             let index_filter = if args.len() >= 6 {
-                // "," delimitted column and "=" P.S this is optional
                 Some(&args[6])
             } else {
                 None
